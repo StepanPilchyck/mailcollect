@@ -2,46 +2,47 @@ package githubparser
 
 import javafx.fxml.FXML
 
-import models.UsersData
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
-import slick.basic.DatabaseConfig
-import slick.jdbc.JdbcProfile
+import models.{DBTools, UserData}
 import slick.jdbc.MySQLProfile.api._
 
 import scala.util.{Failure, Success}
 import scalafx.scene.control.TableColumn._
 import scalafx.scene.control.{TableColumn, TableView, TextField}
+import scalafx.scene.text.TextFlow
 import scalafx.scene.layout._
 import scalafxml.core.macros.sfxml
 import scalafx.collections.ObservableBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.language.postfixOps
 
 @sfxml
 class ParserController(
-    private var usersTable: TableView[User],
+    private var usersTable: TableView[UserData],
     private var ownerField: TextField,
     private var repoField: TextField,
-    private val resultPanel: AnchorPane
+    private val resultPanel: AnchorPane,
+    private val actionsLog: TextFlow
   ) {
 
-  val usersData: ObservableBuffer[User] = ObservableBuffer[User]()
-  val logger: Logger = LoggerFactory.getLogger("ParserController")
-  usersTable.setItems(usersData)
+  DBTools.setLogOut(actionsLog)
+  val usersData: ObservableBuffer[UserData] = ObservableBuffer[UserData]()
+  loadUsersTable(usersTable)
 
   usersTable.columns ++= List(
-    new TableColumn[User, String]("Owner") {
-      cellValueFactory = {_.value.owner}
+    new TableColumn[UserData, String]("Owner") {
+      cellValueFactory = {_.value.owner_}
     },
-    new TableColumn[User, String]("Repo") {
-      cellValueFactory = {_.value.repo}
+    new TableColumn[UserData, String]("Repo") {
+      cellValueFactory = {_.value.repo_}
     }
   )
 
   @FXML
   def handleInsertUserDataAction(): Unit = {
     if (!ownerField.getText.isEmpty && !repoField.getText.isEmpty) {
-      usersData += new User(
+      this.usersData += UserData(
+        None,
         ownerField.getText,
         repoField.getText
       )
@@ -52,10 +53,11 @@ class ParserController(
 
   @FXML
   def handlePareAllAction(): Unit = {
-    val url = "https://api.github.com/repos/" + usersTable.getItems.get(0).owner + "/" + usersTable.getItems.get(0).repo + "/stargazers"
-    println(
-      url
-    )
+    val url = List(
+      "https://api.github.com/repos/",
+      usersTable.getItems.get(0).owner + "/",
+      usersTable.getItems.get(0).repo + "/stargazers"
+    ).mkString
   }
 
   @FXML
@@ -73,8 +75,34 @@ class ParserController(
     }
   }
 
-  private def getUrl(item : User): String = {
-    "https://api.github.com/repos/" + item.owner.value + "/" + item.repo.value + "/stargazers"
+  private def getUrl(item : UserData): String = {
+    List(
+      "https://api.github.com/repos/",
+      item.owner.value, "/",
+      item.repo.value, "/stargazers"
+    ).mkString
+  }
+
+  def loadUsersTable(table: TableView[UserData]): Unit = {
+    val fData: Future[Seq[(String, String)]] = DBTools.getConnect.run(
+      (
+        for {
+          ud <- DBTools.usersData
+        } yield (ud.owner, ud.repo)
+      ).result
+    )
+
+    fData.onComplete {
+      case Success(data) =>
+        for (item <- data) {
+          this.usersData += UserData(
+            None,
+            item._1,
+            item._2
+          )
+        }
+        table.setItems(this.usersData)
+    }
   }
 
 }

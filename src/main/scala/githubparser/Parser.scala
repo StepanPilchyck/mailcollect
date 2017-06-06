@@ -15,12 +15,11 @@ object Parser extends JFXApp {
     throw new IOException("Cannot load resource: Parser.fxml")
   }
 
+  DBTools.schemaCreate("mysql")
+
   val root = FXMLView(resource, NoDependencyResolver)
   stage = new PrimaryStage() {
     title = "Email collect from GitHub.com"
     scene = new Scene(root)
   }
-
-  DBTools.schemaCreate("mysql")
-
 }
